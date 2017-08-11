@@ -86,6 +86,7 @@ protected:
 
 private:
     QLabel *label;
+    QLabel *label2;
 };
 
 

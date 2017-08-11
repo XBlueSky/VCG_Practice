@@ -69,8 +69,7 @@ IntroPage::IntroPage(QWidget *parent)
 
     registerField("number",lineEdit1);
 }
-QVector<QString> usedset;
-QVector<QPair<QString,int> > finallist;
+
 
 RegistrationPage::RegistrationPage(QWidget *parent)
     : QWizardPage(parent)
@@ -100,6 +99,53 @@ RegistrationPage::RegistrationPage(QWidget *parent)
 
 }
 
+
+QJsonObject finallist;
+QJsonObject subset;
+
+bool Intersection(QJsonArray A,QJsonArray B){
+    for(int i=0;i<A.size();i++)
+        for(int j=1;j<B.size();j++)
+            if(A[i] == B[j]) return false;
+    return true;
+}
+
+//combination C n 取 m
+//now  => current number
+//start => where begin
+QString set[1001];
+void combination(int now,int start,int n,int m,QJsonObject A){
+    int finalbid = 0;
+    QString temp ="";
+    if(now == m+1){
+        bool flag = true;
+        QJsonArray finalitem;
+        for(int i = 1; i <= m; i++){
+            QJsonArray data=subset[QString::number(i)].toArray();
+            if(Intersection(finalitem,data)){
+                for(int q=1;q<data.size();q++){
+                    finalitem.append(data[q]);
+                }
+                //qDebug()<<data[0].toInt();
+                finalbid = finalbid + data[0].toInt();
+            }
+            else flag = false;
+            temp = temp +"P" +set[i]+" ";
+        }
+        finalitem.append(finalbid);
+        if(flag)
+            finallist.insert(temp,finalitem);
+        return ;
+   }
+    else
+        for(int j = start; j<= n; j++){
+            QJsonArray data_A=A["P"+QString::number(j)].toArray();
+            subset.insert(QString::number(now),data_A);
+            set[now]=QString::number(j);
+            combination(now+1,j+1,n,m,A);
+   }
+}
+ QVector<QPair<int,QString> > payment;
 void RegistrationPage::initializePage(){
     int number = field("number").toInt();
     bidTable->setColumnCount(number);  //設定QTableWidget行數
@@ -113,39 +159,78 @@ void RegistrationPage::initializePage(){
 bool RegistrationPage::validatePage(){
     int number = field("number").toInt();
     QJsonObject bidlist;
-    QJsonArray biditem;
     for(int i=0;i<number;i++){
+        QJsonArray biditem;
         QString bid = bidTable->item(0,i)->text();
         QString bundle = bidTable->item(1,i)->text();
-        biditem.append(bid);
-        biditem.append(bundle);
-        bidlist.insert("P"+QString::number(i),biditem);
-        biditem.pop_back();
-        biditem.pop_back();
-    }
-    QJsonDocument doc(bidlist);
-    QString strJson(doc.toJson(QJsonDocument::Compact));
-    qDebug()<<strJson.toStdString().data();
-
-    for(int i=0;i<bidlist.size();i++){
-        QJsonArray data=bidlist["P"+QString::number(i)].toArray();
-        for(int q=0;q<=data[1].toString().count()/2;q++){
-            QString one = data[1].toString().split(",").at(q);
-            usedset.push_back(one);
-            //qDebug()<<one;
+        biditem.append(bid.toInt());
+        for(int q=0;q<=bundle.count()/2;q++){
+            QString temp = bundle.split(",").at(q);
+            biditem.append(temp);
         }
-        for(int j=0;j<<bidlist.size();j++)
-            if(i!=j){
+        bidlist.insert("P"+QString::number(i+1),biditem);
+    }
+//    QJsonDocument test(bidlist);
+//    QString strJson(test.toJson(QJsonDocument::Compact));
+//    qDebug()<<strJson.toStdString().data();
 
+    for(int i=1;i<bidlist.size();i++){
+        combination(1,1,bidlist.size(),i,bidlist);
+    }
+
+    QJsonDocument doc(finallist);
+    QString final(doc.toJson(QJsonDocument::Compact));
+    qDebug()<<final.toStdString().data();
+
+    QJsonObject::iterator it;
+    QJsonArray final_data;
+    QString winner;
+    final_data.append(0);
+    for (it = finallist.begin(); it != finallist.end(); it++) {
+        QJsonArray current_data = it.value().toArray();
+        if(current_data.last().toInt()>final_data.last().toInt()){
+            final_data = current_data;
+            winner = it.key();
+        }
+    }
+    qDebug()<<final_data;
+    qDebug()<<winner;
+
+    QJsonArray second_data;
+    QString second;
+    second_data.append(0);
+    for(int i=0;i<winner.count()/3;i++){
+        QString temp = winner.split(" ").at(i);
+        for (it = finallist.begin(); it != finallist.end(); it++) {
+            bool flag = true;
+            for(int j=0;j<it.key().count()/3;j++){
+                QString foo = it.key().split(" ").at(j);
+                if(temp == foo){
+                    flag = false;
+                    break;
+                }
             }
-    }
-    for(int i=0;i<usedset.size();i++){
-        qDebug()<<usedset[i];
+            if(flag){
+                QJsonArray current_data = it.value().toArray();
+                if(current_data.last().toInt()>second_data.last().toInt()){
+                    second_data = current_data;
+                    second = it.key();
+                }
+            }
+        }
+        QJsonArray winner_bid=bidlist[temp].toArray();
+        int welfare = final_data.last().toInt() - winner_bid.first().toInt();
+        welfare = second_data.last().toInt() - welfare;
+        payment.push_back(qMakePair(welfare,temp));
     }
 
-
+    for(int i=0;i<payment.size();i++){
+        qDebug()<<payment[i].first;
+        qDebug()<<payment[i].second;
+    }
     return true;
 }
+
 
 ConclusionPage::ConclusionPage(QWidget *parent)
     : QWizardPage(parent)
@@ -153,20 +238,24 @@ ConclusionPage::ConclusionPage(QWidget *parent)
 
     setTitle("Conclusion");
 
-    label = new QLabel("You are now successfully registered. Have a "
-                               "nice day!");
+    label = new QLabel("VCG Payment analysis is done ! ");
+    label->setFont(QFont("Courier New", 15, QFont::Bold));
     label->setWordWrap(true);
-
+    label2 = new QLabel();
+    label2->setFont(QFont("Courier New", 15));
     QVBoxLayout *layout = new QVBoxLayout;
     layout->addWidget(label);
+    layout->addWidget(label2);
     setLayout(layout);
 
 }
 
 void ConclusionPage::initializePage(){
 
-//    for(int i=1;i<=number;i++){
-//         HorizontalHeader<<"P"+QString::number(i);
-//    }
+    QString print = "";
+    for(int i=0;i<payment.size();i++){
+        print = print + payment[i].second + " should pay " +QString::number(payment[i].first)+" dollars\n";
+    }
+    label2->setText(print);
 
 }
